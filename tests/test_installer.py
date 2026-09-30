@@ -26,18 +26,38 @@ class InstallerTests(unittest.TestCase):
             "http://127.0.0.1:8000",
         )
 
-    def test_generated_env_uses_safe_auth_defaults(self):
+    def test_generated_env_defaults_to_auth_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / ".env"
             path.write_text(
-                _env_lines("https://mcp.example.net", "client-id", "client-secret"),
+                _env_lines("https://mcp.example.net"),
                 encoding="utf-8",
             )
             env = parse_env(path)
+        self.assertEqual(env["GATEWAY_AUTH_ENABLED"], "false")
         self.assertEqual(env["GATEWAY_ALLOWED_EMAIL_DOMAINS"], "gateway.invalid")
-        self.assertEqual(env["YANDEX_OAUTH_SCOPES"], "login:email login:info")
+        self.assertEqual(env["YANDEX_OAUTH_CLIENT_ID"], "")
+        self.assertEqual(env["YANDEX_OAUTH_CLIENT_SECRET"], "")
         self.assertEqual(env["GATEWAY_RESOURCE_URL"], "https://mcp.example.net/mcp")
         self.assertNotIn("change-me", "\n".join(env.values()))
+
+    def test_generated_env_supports_yandex_auth_when_selected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".env"
+            path.write_text(
+                _env_lines(
+                    "https://mcp.example.net",
+                    "client-id",
+                    "client-secret",
+                    auth_enabled=True,
+                ),
+                encoding="utf-8",
+            )
+            env = parse_env(path)
+        self.assertEqual(env["GATEWAY_AUTH_ENABLED"], "true")
+        self.assertEqual(env["YANDEX_OAUTH_CLIENT_ID"], "client-id")
+        self.assertEqual(env["YANDEX_OAUTH_CLIENT_SECRET"], "client-secret")
+        self.assertEqual(env["YANDEX_OAUTH_SCOPES"], "login:email login:info")
 
     def test_owner_policy_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -49,7 +69,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(data["users"]["owner@example.net"], {"groups": ["admins"]})
 
     def test_compose_is_hardened(self):
-        original = '''services:\n  gateway:\n    environment:\n      GATEWAY_ALLOWED_EMAIL_DOMAINS: ${GATEWAY_ALLOWED_EMAIL_DOMAINS:-}\n      YONOTE_BASE_URL: ${YONOTE_BASE_URL:-https://wiki.example.com}\n      GITLAB_API_BASE_URL: ${GITLAB_API_BASE_URL:-https://gitlab.example.com/api/v4}\n    ports:\n      - "${GATEWAY_PORT:-8000}:8000"\n'''
+        original = '''services:\n  gateway:\n    environment:\n      GATEWAY_ALLOWED_EMAIL_DOMAINS: ${GATEWAY_ALLOWED_EMAIL_DOMAINS:-}\n      YONOTE_BASE_URL: ${YONOTE_BASE_URL:-https://wiki.example.com}\n      GITLAB_API_BASE_URL: ${GITLAB_API_BASE_URL:-https://gitlab.example.com/api/v4}\n      YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:?set YANDEX_OAUTH_CLIENT_ID}\n      YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:?set YANDEX_OAUTH_CLIENT_SECRET}\n    ports:\n      - "${GATEWAY_PORT:-8000}:8000"\n'''
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "docker-compose.yml"
             path.write_text(original, encoding="utf-8")
@@ -59,6 +79,8 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("GATEWAY_ALLOWED_EMAIL_DOMAINS: ${GATEWAY_ALLOWED_EMAIL_DOMAINS:-gateway.invalid}", text)
         self.assertIn("YONOTE_BASE_URL: ${YONOTE_BASE_URL-}", text)
         self.assertIn("GITLAB_API_BASE_URL: ${GITLAB_API_BASE_URL-}", text)
+        self.assertIn("YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}", text)
+        self.assertIn("YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}", text)
 
     def test_hermes_adapter_command(self):
         self.assertEqual(
