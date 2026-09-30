@@ -4,16 +4,57 @@ Independent deployment and onboarding layer for a portable MCP gateway stack.
 
 ## Product goal
 
-Provide a seamless path from a clean Linux server to a working, authenticated MCP gateway and supported client connection without requiring the operator to understand Docker Compose internals, OAuth metadata, policy syntax, or client-specific quirks.
+Provide a short path from a clean Linux VM to a working MCP gateway without requiring the operator to understand Docker Compose internals, secret generation, reverse-proxy configuration, TLS, or client-specific quirks.
 
 Initial client target: Hermes.
 
-## MVP commands
+## Clean-VM bootstrap
 
-Install this repository in editable mode on the deployment machine:
+VM creation is a separate infrastructure step. The VM should already exist with:
+
+- Ubuntu 24.04 or compatible Debian-based Linux
+- SSH access
+- a public IPv4 address
+- inbound TCP 22, 80 and 443 allowed by the cloud firewall/security group
+- about 2 GB RAM for comfortable Docker image builds
+
+After the private repository is cloned onto the VM, the deployment path is now one command:
 
 ```bash
-python3 -m pip install -e .
+bash bootstrap.sh --owner-email owner@example.com
+```
+
+The bootstrap script automatically:
+
+- installs Python venv support, Docker and Docker Compose
+- installs Caddy
+- installs the `gateway` CLI from this repository
+- detects the public IPv4 and creates an `sslip.io` hostname unless a hostname is supplied
+- runs `gateway setup` with the final HTTPS URL
+- generates local secrets and writes the private `.env`
+- runs `gateway doctor`
+- builds and starts PostgreSQL, Gateway and notification worker
+- configures Caddy as the HTTPS reverse proxy
+- verifies the public `/healthz` endpoint
+- prints the final MCP URL
+
+Use an existing hostname instead of `sslip.io` when needed:
+
+```bash
+bash bootstrap.sh --owner-email owner@example.com --hostname mcp.example.com
+```
+
+The current bootstrap deliberately uses `auth none` for smoke-test deployments. Authentication is a separate product stage and must be enabled before production use.
+
+Because this repository is private, GitHub authentication/cloning is still a separate prerequisite. Once the repository is on the VM, Docker, Compose, Caddy, HTTPS, Gateway setup, startup and health verification no longer require manual commands.
+
+## CLI commands
+
+For manual or advanced operation, install this repository in editable mode:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
 ```
 
 Then use:
@@ -25,28 +66,22 @@ gateway status
 gateway connect hermes
 ```
 
-`gateway setup` copies the vendored Gateway into `/opt/gateway-platform`, generates local secrets, writes a private `.env`, creates an explicit owner-admin policy, applies a deny-domain guard, removes unsafe optional-backend fallbacks, and binds Gateway port 8000 to loopback only. Real secrets are never committed.
+`gateway setup` copies the vendored Gateway into `/opt/gateway-platform`, generates or preserves local system secrets, writes a private `.env`, creates an explicit owner-admin policy, applies a deny-domain guard, removes unsafe optional-backend fallbacks, and binds Gateway port 8000 to loopback only.
 
-The Yandex OAuth client secret is requested with a hidden prompt. For non-interactive use, provide it only through the `YANDEX_OAUTH_CLIENT_SECRET` environment variable.
+Repeated `gateway setup --force` preserves the existing PostgreSQL password, JWT secret and encryption key so an existing PostgreSQL volume is not broken by reconfiguration.
 
-Use `gateway setup --start` to build and start the Docker Compose stack when Docker is already available.
+`gateway doctor` validates prerequisites and known failure modes including Docker/Compose, placeholder values, owner policy, email-domain guard, effective Compose configuration and public port exposure.
 
-`gateway doctor` validates prerequisites and known failure modes: Docker/Compose, placeholder values, owner policy, email-domain guard, effective Compose configuration, and public port exposure.
+`gateway status` reports the installation, Docker Compose state and public `/healthz` result without printing secrets.
 
-`gateway status` reports the installation, Docker Compose state, and public `/healthz` result without printing secrets.
-
-`gateway connect hermes` prints the exact command to run on the machine where Hermes is installed. Add `--apply` only when the command is being run on that client machine.
-
-## Current MVP boundary
-
-The first MVP productizes Gateway configuration, safety checks, startup, health, and Hermes onboarding. Docker installation and HTTPS/reverse-proxy provisioning are the next automation layer and are intentionally not hidden behind an untested bootstrap script yet.
+`gateway connect hermes` prints the client-side command to run where Hermes is installed.
 
 ## Independence
 
-This repository is the product repository. It does not depend at runtime on upstream GitHub repositories being available. The full source snapshots are stored under `vendor/gateway` and `vendor/platform`. Third-party Apache-2.0 provenance is retained only where legally required in `NOTICE` and `THIRD_PARTY_NOTICES.md`.
+This repository is the product repository. It does not depend at runtime on upstream GitHub repositories being available. The full source snapshots are stored under `vendor/gateway` and `vendor/platform`. Third-party Apache-2.0 provenance is retained where legally required in `NOTICE` and `THIRD_PARTY_NOTICES.md`.
 
-Customer-facing branding, CLI names, UI text, service names, examples, and default configuration use this project's own naming and do not present upstream maintainers as the product vendor.
+Customer-facing branding, CLI names, UI text, service names, examples and default configuration use this project's own naming and do not present upstream maintainers as the product vendor.
 
 ## Development rule
 
-The installer should automate every step that can safely be automated. Human input should be limited to genuine decisions and approvals: infrastructure choice, owner identity, OAuth consent, business-system authorization, and security policy.
+The installer should automate every step that can safely be automated. Human input should be limited to genuine decisions and approvals: infrastructure choice, owner identity, authentication/consent, business-system authorization and security policy.
