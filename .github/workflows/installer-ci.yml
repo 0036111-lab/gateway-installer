@@ -6,6 +6,9 @@ on:
       - "gateway_installer/**"
       - "tests/**"
       - "bootstrap.sh"
+      - "install.sh"
+      - "docs/LLM_YANDEX_VM.md"
+      - "README.md"
       - "pyproject.toml"
       - ".github/workflows/installer-ci.yml"
   push:
@@ -14,6 +17,9 @@ on:
       - "gateway_installer/**"
       - "tests/**"
       - "bootstrap.sh"
+      - "install.sh"
+      - "docs/LLM_YANDEX_VM.md"
+      - "README.md"
       - "pyproject.toml"
       - ".github/workflows/installer-ci.yml"
 
@@ -25,8 +31,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Validate bootstrap shell syntax
-        run: bash -n bootstrap.sh
+      - name: Validate shell syntax
+        run: |
+          bash -n install.sh
+          bash -n bootstrap.sh
       - name: Install installer package
         run: pip install -e .
       - name: CLI smoke test
