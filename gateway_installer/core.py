@@ -56,7 +56,13 @@ def _write_private(path: Path, content: str) -> None:
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
 
-def _env_lines(public_url: str, client_id: str, client_secret: str) -> str:
+def _env_lines(
+    public_url: str,
+    client_id: str = "",
+    client_secret: str = "",
+    *,
+    auth_enabled: bool = False,
+) -> str:
     postgres_password = secrets.token_urlsafe(32)
     jwt_secret = secrets.token_urlsafe(48)
     encryption_key = secrets.token_urlsafe(32)
@@ -64,7 +70,7 @@ def _env_lines(public_url: str, client_id: str, client_secret: str) -> str:
         "POSTGRES_PASSWORD": postgres_password,
         "GATEWAY_JWT_SECRET": jwt_secret,
         "GATEWAY_USER_TOKEN_ENCRYPTION_KEY": encryption_key,
-        "GATEWAY_AUTH_ENABLED": "true",
+        "GATEWAY_AUTH_ENABLED": "true" if auth_enabled else "false",
         "GATEWAY_PUBLIC_URL": public_url,
         "GATEWAY_ISSUER_URL": public_url,
         "GATEWAY_RESOURCE_URL": f"{public_url}/mcp",
@@ -72,7 +78,7 @@ def _env_lines(public_url: str, client_id: str, client_secret: str) -> str:
         "GATEWAY_RESOURCE_POLICY_MODE": "permissive",
         "YANDEX_OAUTH_CLIENT_ID": client_id.strip(),
         "YANDEX_OAUTH_CLIENT_SECRET": client_secret.strip(),
-        "YANDEX_OAUTH_SCOPES": "login:email login:info",
+        "YANDEX_OAUTH_SCOPES": "login:email login:info" if auth_enabled and client_id.strip() else "",
         "YONOTE_BASE_URL": "",
         "GITLAB_API_BASE_URL": "",
     }
@@ -97,6 +103,8 @@ def _harden_compose(path: Path) -> None:
         "GATEWAY_ALLOWED_EMAIL_DOMAINS: ${GATEWAY_ALLOWED_EMAIL_DOMAINS:-}": "GATEWAY_ALLOWED_EMAIL_DOMAINS: ${GATEWAY_ALLOWED_EMAIL_DOMAINS:-gateway.invalid}",
         "YONOTE_BASE_URL: ${YONOTE_BASE_URL:-https://wiki.example.com}": "YONOTE_BASE_URL: ${YONOTE_BASE_URL-}",
         "GITLAB_API_BASE_URL: ${GITLAB_API_BASE_URL:-https://gitlab.example.com/api/v4}": "GITLAB_API_BASE_URL: ${GITLAB_API_BASE_URL-}",
+        "YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:?set YANDEX_OAUTH_CLIENT_ID}": "YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}",
+        "YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:?set YANDEX_OAUTH_CLIENT_SECRET}": "YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}",
     }
     for old, new in replacements.items():
         if old not in text:
@@ -110,8 +118,10 @@ def install_gateway(
     install_dir: Path,
     public_url: str,
     owner_email: str,
-    yandex_client_id: str,
-    yandex_client_secret: str,
+    yandex_client_id: str = "",
+    yandex_client_secret: str = "",
+    auth_enabled: bool = False,
+    auth_mode: str = "none",
     force: bool = False,
     allow_http: bool = False,
 ) -> Path:
@@ -134,7 +144,12 @@ def install_gateway(
     _harden_compose(install_dir / "docker-compose.yml")
     _write_private(
         install_dir / ".env",
-        _env_lines(public_url, yandex_client_id, yandex_client_secret),
+        _env_lines(
+            public_url,
+            yandex_client_id,
+            yandex_client_secret,
+            auth_enabled=auth_enabled,
+        ),
     )
 
     state = {
@@ -143,6 +158,7 @@ def install_gateway(
         "install_dir": str(install_dir),
         "public_url": public_url,
         "owner_email": owner_email.strip().lower(),
+        "auth_mode": auth_mode,
         "mcp_url": f"{public_url}/mcp",
     }
     (install_dir / STATE_FILE).write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
