@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Import pinned upstream sources into this repository as vendored copies.
+"""Import pinned upstream sources as vendored copies.
 
-This script intentionally keeps required Apache-2.0 licensing/NOTICE material,
-while removing upstream branding from product-facing docs/config where safe.
+The import is designed for technical independence from upstream repositories.
+It preserves third-party licensing/attribution material and removes upstream
+branding from product-facing material only. Unknown occurrences are reported
+for manual review instead of being rewritten blindly.
 """
 
 from __future__ import annotations
 
-import os
 import pathlib
 import re
 import shutil
@@ -30,19 +31,35 @@ SOURCES = [
     ),
 ]
 
-# Files where third-party attribution must remain intact.
-PROTECTED_BASENAMES = {"LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"}
-TEXT_EXTENSIONS = {
-    ".md", ".txt", ".py", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
-    ".sh", ".env", ".example", ".html", ".css", ".js", ".ts", ".tsx", ".jsx",
+# Files that must remain verbatim for Apache-2.0 compliance.
+PROTECTED_BASENAMES = {"LICENSE", "NOTICE"}
+
+# Product-facing files/directories where upstream branding can be changed.
+PRODUCT_FACING_NAMES = {
+    "README.md",
+    "README.ru.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "plugin.yaml",
+    "pyproject.toml",
+}
+PRODUCT_FACING_PARTS = {
+    ".agents",
+    ".claude-plugin",
+    ".cursor-plugin",
+    ".zcode-plugin",
+    "docs",
+    "plugins",
+    "skills",
 }
 
-REPLACEMENTS = [
+BRAND_REPLACEMENTS = [
     (re.compile(r"coMind Space", re.I), "Gateway Project"),
-    (re.compile(r"coMind", re.I), "Gateway Project"),
+    (re.compile(r"\bcoMind\b", re.I), "Gateway Project"),
     (re.compile(r"comindspace", re.I), "gateway-project"),
     (re.compile(r"comind\.space", re.I), "example.invalid"),
 ]
+BRAND_PATTERN = re.compile(r"comind|coMind", re.I)
 
 
 def run(*args: str, cwd: pathlib.Path | None = None) -> None:
@@ -63,55 +80,76 @@ def clone_pinned(name: str, url: str, commit: str) -> pathlib.Path:
     return dst
 
 
-def is_text_candidate(path: pathlib.Path) -> bool:
+def is_product_facing(path: pathlib.Path, root: pathlib.Path) -> bool:
+    rel = path.relative_to(root)
     if path.name in PROTECTED_BASENAMES:
         return False
-    if path.suffix.lower() in TEXT_EXTENSIONS:
+    if path.name in PRODUCT_FACING_NAMES:
         return True
-    return path.name in {"Dockerfile", "Makefile", "MANIFEST.in"}
+    return any(part in PRODUCT_FACING_PARTS for part in rel.parts[:-1])
 
 
-def debrand_tree(root: pathlib.Path) -> None:
+def rewrite_product_branding(root: pathlib.Path) -> None:
     for path in root.rglob("*"):
-        if not path.is_file() or not is_text_candidate(path):
+        if not path.is_file() or not is_product_facing(path, root):
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        new = text
-        for pattern, replacement in REPLACEMENTS:
-            new = pattern.sub(replacement, new)
-        if new != text:
-            path.write_text(new, encoding="utf-8")
+
+        # Never rewrite lines that look like legal attribution/copyright notices.
+        out: list[str] = []
+        changed = False
+        for line in text.splitlines(keepends=True):
+            if re.search(r"copyright|licensed under|developed by", line, re.I):
+                out.append(line)
+                continue
+            new_line = line
+            for pattern, replacement in BRAND_REPLACEMENTS:
+                new_line = pattern.sub(replacement, new_line)
+            changed = changed or (new_line != line)
+            out.append(new_line)
+
+        if changed:
+            path.write_text("".join(out), encoding="utf-8")
 
 
-def assert_no_product_branding() -> None:
+def audit_branding() -> list[str]:
+    """Return remaining non-legal occurrences for explicit review."""
     hits: list[str] = []
     for root in (VENDOR / "gateway", VENDOR / "platform"):
         for path in root.rglob("*"):
             if not path.is_file() or path.name in PROTECTED_BASENAMES:
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
+                lines = path.read_text(encoding="utf-8").splitlines()
             except UnicodeDecodeError:
                 continue
-            if re.search(r"comind|coMind", text, re.I):
-                hits.append(str(path.relative_to(ROOT)))
-    if hits:
-        print("Branding still present outside protected attribution files:", file=sys.stderr)
-        for hit in hits:
-            print(f"  - {hit}", file=sys.stderr)
-        raise SystemExit(2)
+            for n, line in enumerate(lines, 1):
+                if not BRAND_PATTERN.search(line):
+                    continue
+                if re.search(r"copyright|licensed under|developed by", line, re.I):
+                    continue
+                hits.append(f"{path.relative_to(ROOT)}:{n}: {line.strip()}")
+    return hits
 
 
 def main() -> None:
     VENDOR.mkdir(exist_ok=True)
     for name, url, commit in SOURCES:
         root = clone_pinned(name, url, commit)
-        debrand_tree(root)
-    assert_no_product_branding()
-    print("Imported pinned upstreams into vendor/gateway and vendor/platform")
+        rewrite_product_branding(root)
+
+    hits = audit_branding()
+    if hits:
+        print("Remaining upstream-brand references require manual review:", file=sys.stderr)
+        for hit in hits:
+            print(f"  - {hit}", file=sys.stderr)
+        raise SystemExit(2)
+
+    print("Imported pinned sources into vendor/gateway and vendor/platform")
+    print("Required LICENSE/NOTICE files were preserved verbatim.")
 
 
 if __name__ == "__main__":
