@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "vendored_path": "vendor/gateway",
+      "source_repository": "https://github.com/comindspace/gateway-mcp",
+      "source_commit": "d36aa25521e16c8d69ac6adde9ef14fec77a95e0",
+      "license": "Apache-2.0",
+      "preserve": ["LICENSE", "NOTICE"]
+    },
+    {
+      "vendored_path": "vendor/platform",
+      "source_repository": "https://github.com/comindspace/ai-native",
+      "source_commit": "df5588d572e343805261d16889e1db7354cfd33d",
+      "license": "Apache-2.0",
+      "preserve": ["LICENSE", "NOTICE"]
+    }
+  ]
+}
