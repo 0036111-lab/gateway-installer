@@ -49,8 +49,16 @@ def _secret_from_env_or_prompt(name: str, prompt: str) -> str:
 def cmd_setup(args: argparse.Namespace) -> int:
     public_url = _value(args.public_url, "Public HTTPS URL")
     owner_email = _value(args.owner_email, "Owner email")
-    client_id = _value(args.yandex_client_id, "Yandex OAuth Client ID")
-    client_secret = _secret_from_env_or_prompt("YANDEX_OAUTH_CLIENT_SECRET", "Yandex OAuth Client Secret (hidden)")
+
+    auth_mode = args.auth
+    client_id = ""
+    client_secret = ""
+    if auth_mode == "yandex":
+        client_id = _value(args.yandex_client_id, "Yandex OAuth Client ID")
+        client_secret = _secret_from_env_or_prompt(
+            "YANDEX_OAUTH_CLIENT_SECRET",
+            "Yandex OAuth Client Secret (hidden)",
+        )
 
     target = install_gateway(
         install_dir=args.install_dir,
@@ -58,6 +66,8 @@ def cmd_setup(args: argparse.Namespace) -> int:
         owner_email=owner_email,
         yandex_client_id=client_id,
         yandex_client_secret=client_secret,
+        auth_enabled=auth_mode != "none",
+        auth_mode=auth_mode,
         force=args.force,
         allow_http=args.allow_http,
     )
@@ -65,6 +75,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print("PASS    secrets              generated locally; .env mode is 0600")
     print("PASS    policy               explicit owner admin + deny-domain sentinel")
     print("PASS    network              Gateway port 8000 bound to 127.0.0.1 only")
+    print(f"PASS    auth                 {auth_mode}")
 
     if args.start:
         ok, detail = start_stack(target)
@@ -90,6 +101,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     print(f"PASS    installation         {state.get('install_dir', args.install_dir)}")
     print(f"INFO    owner                {state.get('owner_email', 'unknown')}")
     print(f"INFO    MCP URL              {state.get('mcp_url', 'unknown')}")
+    print(f"INFO    auth                 {state.get('auth_mode', 'unknown')}")
 
     ok, detail = docker_ps(args.install_dir)
     print(f"{'PASS' if ok else 'BLOCKED':7} docker               {detail}")
@@ -139,7 +151,13 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--install-dir", type=Path, default=DEFAULT_INSTALL_DIR)
     setup.add_argument("--public-url")
     setup.add_argument("--owner-email")
-    setup.add_argument("--yandex-client-id")
+    setup.add_argument(
+        "--auth",
+        choices=["none", "yandex"],
+        default="none",
+        help="authentication provider; default is none for a provider-neutral test deployment",
+    )
+    setup.add_argument("--yandex-client-id", help="required only when --auth yandex")
     setup.add_argument("--allow-http", action="store_true", help="allow http:// only for test environments")
     setup.add_argument("--force", action="store_true", help="backup an existing install directory before replacing it")
     setup.add_argument("--start", action="store_true", help="build and start the Docker Compose stack after setup")
