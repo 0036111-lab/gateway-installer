@@ -62,10 +62,12 @@ def _env_lines(
     client_secret: str = "",
     *,
     auth_enabled: bool = False,
+    preserved: dict[str, str] | None = None,
 ) -> str:
-    postgres_password = secrets.token_urlsafe(32)
-    jwt_secret = secrets.token_urlsafe(48)
-    encryption_key = secrets.token_urlsafe(32)
+    preserved = preserved or {}
+    postgres_password = preserved.get("POSTGRES_PASSWORD") or secrets.token_urlsafe(32)
+    jwt_secret = preserved.get("GATEWAY_JWT_SECRET") or secrets.token_urlsafe(48)
+    encryption_key = preserved.get("GATEWAY_USER_TOKEN_ENCRYPTION_KEY") or secrets.token_urlsafe(32)
     values = {
         "POSTGRES_PASSWORD": postgres_password,
         "GATEWAY_JWT_SECRET": jwt_secret,
@@ -130,9 +132,11 @@ def install_gateway(
         raise InstallerError(f"vendored gateway source not found at {VENDORED_GATEWAY}")
 
     install_dir = install_dir.expanduser().resolve()
+    preserved_env: dict[str, str] = {}
     if install_dir.exists():
         if not force:
             raise InstallerError(f"install directory already exists: {install_dir}; use --force to back it up first")
+        preserved_env = parse_env(install_dir / ".env")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = install_dir.with_name(f"{install_dir.name}.backup-{stamp}")
         install_dir.rename(backup)
@@ -149,6 +153,7 @@ def install_gateway(
             yandex_client_id,
             yandex_client_secret,
             auth_enabled=auth_enabled,
+            preserved=preserved_env,
         ),
     )
 
