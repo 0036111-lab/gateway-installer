@@ -1,0 +1,34 @@
+name: Installer CI
+
+on:
+  pull_request:
+    paths:
+      - "gateway_installer/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/installer-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "gateway_installer/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/installer-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install installer package
+        run: pip install -e .
+      - name: CLI smoke test
+        run: |
+          gateway --version
+          gateway --help
+          gateway connect hermes --url https://mcp.example.net
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v

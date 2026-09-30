@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gateway-installer"
+version = "0.1.0"
+description = "Productized deployment and onboarding layer for the vendored MCP gateway"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+gateway = "gateway_installer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gateway_installer*"]
