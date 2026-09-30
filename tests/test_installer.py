@@ -59,6 +59,27 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(env["YANDEX_OAUTH_CLIENT_SECRET"], "client-secret")
         self.assertEqual(env["YANDEX_OAUTH_SCOPES"], "login:email login:info")
 
+    def test_generated_env_preserves_runtime_secrets(self):
+        preserved = {
+            "POSTGRES_PASSWORD": "existing-postgres-password",
+            "GATEWAY_JWT_SECRET": "existing-jwt-secret",
+            "GATEWAY_USER_TOKEN_ENCRYPTION_KEY": "existing-encryption-key",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".env"
+            path.write_text(
+                _env_lines("https://new.example.net", preserved=preserved),
+                encoding="utf-8",
+            )
+            env = parse_env(path)
+        self.assertEqual(env["POSTGRES_PASSWORD"], preserved["POSTGRES_PASSWORD"])
+        self.assertEqual(env["GATEWAY_JWT_SECRET"], preserved["GATEWAY_JWT_SECRET"])
+        self.assertEqual(
+            env["GATEWAY_USER_TOKEN_ENCRYPTION_KEY"],
+            preserved["GATEWAY_USER_TOKEN_ENCRYPTION_KEY"],
+        )
+        self.assertEqual(env["GATEWAY_PUBLIC_URL"], "https://new.example.net")
+
     def test_owner_policy_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "gateway-policy.json"
