@@ -8,9 +8,9 @@ Provide a short path from a clean Linux VM to a working MCP gateway without requ
 
 Initial client target: Hermes.
 
-## Clean-VM bootstrap
+## Stage 1 — VM already exists
 
-VM creation is a separate infrastructure step. The VM should already exist with:
+The VM should already have:
 
 - Ubuntu 24.04 or compatible Debian-based Linux
 - SSH access
@@ -18,13 +18,15 @@ VM creation is a separate infrastructure step. The VM should already exist with:
 - inbound TCP 22, 80 and 443 allowed by the cloud firewall/security group
 - about 2 GB RAM for comfortable Docker image builds
 
-After the private repository is cloned onto the VM, the deployment path is now one command:
+After the first successful SSH login, deployment is one command:
 
 ```bash
-bash bootstrap.sh --owner-email owner@example.com
+curl -fsSL https://raw.githubusercontent.com/0036111-lab/gateway-installer/main/install.sh | sudo bash -s -- --owner-email owner@example.com
 ```
 
-The bootstrap script automatically:
+`install.sh` installs the minimal download prerequisites, clones or refreshes this repository under `/opt/gateway-installer`, and hands off to `bootstrap.sh`.
+
+`bootstrap.sh` then automatically:
 
 - installs Python venv support, Docker and Docker Compose
 - installs Caddy
@@ -38,7 +40,7 @@ The bootstrap script automatically:
 - verifies the public `/healthz` endpoint
 - prints the final MCP URL
 
-Use an existing hostname instead of `sslip.io` when needed:
+Use an existing hostname instead of `sslip.io` when needed by cloning the repository and running:
 
 ```bash
 bash bootstrap.sh --owner-email owner@example.com --hostname mcp.example.com
@@ -46,7 +48,13 @@ bash bootstrap.sh --owner-email owner@example.com --hostname mcp.example.com
 
 The current bootstrap deliberately uses `auth none` for smoke-test deployments. Authentication is a separate product stage and must be enabled before production use.
 
-Because this repository is private, GitHub authentication/cloning is still a separate prerequisite. Once the repository is on the VM, Docker, Compose, Caddy, HTTPS, Gateway setup, startup and health verification no longer require manual commands.
+## Stage 0 — create a Yandex Cloud VM with an LLM
+
+For an LLM-assisted Yandex Cloud setup, use:
+
+`docs/LLM_YANDEX_VM.md`
+
+That runbook keeps VM provisioning separate from product deployment. It uses a normal SSH key, public IPv4, the required network ports, and then hands off immediately to the one-command installer above.
 
 ## CLI commands
 
