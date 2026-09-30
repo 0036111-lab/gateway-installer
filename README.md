@@ -8,6 +8,24 @@ Provide a short path from a clean Linux VM to a working MCP gateway without requ
 
 Initial client target: Hermes.
 
+## Start here with an LLM
+
+If another person is testing the installation with ChatGPT, Claude, or another LLM, give the LLM this runbook first:
+
+`docs/LLM_YANDEX_VM.md`
+
+The LLM must follow one route from start to finish and show the full deployment map after every completed action:
+
+`Diagnosis → VM → SSH → Installer → Docker/Compose/Caddy → Gateway + PostgreSQL + worker → HTTPS → healthcheck → MCP URL`
+
+After every completed action it must update the map using:
+
+- `✅` completed
+- `▶️` current
+- `⬜` remaining
+
+It must then provide only one next action, clearly stating where to perform it. Completed steps must not be repeated unless a concrete failure requires re-diagnosis.
+
 ## Stage 1 — VM already exists
 
 The VM should already have:
