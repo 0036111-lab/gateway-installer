@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Import pinned upstream sources as vendored copies.
 
-The import is designed for technical independence from upstream repositories.
-It preserves third-party licensing/attribution material and removes upstream
-branding from product-facing material only. Unknown occurrences are reported
-for manual review instead of being rewritten blindly.
+The import creates technical independence from the upstream repositories.
+Apache-2.0 licensing/attribution material is preserved. Non-legal upstream
+branding is rewritten across the vendored source tree and audited afterwards.
 """
 
 from __future__ import annotations
@@ -31,35 +30,31 @@ SOURCES = [
     ),
 ]
 
-# Files that must remain verbatim for Apache-2.0 compliance.
+# Keep upstream license/notice files verbatim.
 PROTECTED_BASENAMES = {"LICENSE", "NOTICE"}
+LEGAL_LINE = re.compile(r"copyright|licensed under|developed by", re.I)
+BRAND_PATTERN = re.compile(r"comind", re.I)
 
-# Product-facing files/directories where upstream branding can be changed.
-PRODUCT_FACING_NAMES = {
-    "README.md",
-    "README.ru.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
-    "plugin.yaml",
-    "pyproject.toml",
-}
-PRODUCT_FACING_PARTS = {
-    ".agents",
-    ".claude-plugin",
-    ".cursor-plugin",
-    ".zcode-plugin",
-    "docs",
-    "plugins",
-    "skills",
-}
-
-BRAND_REPLACEMENTS = [
-    (re.compile(r"coMind Space", re.I), "Gateway Project"),
-    (re.compile(r"\bcoMind\b", re.I), "Gateway Project"),
-    (re.compile(r"comindspace", re.I), "gateway-project"),
+# Specific compatibility names first, then general branding.
+REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"GATEWAY_COMIND_MR_REVIEW_CHAT_ID"), "GATEWAY_SKILL_REVIEW_CHAT_ID"),
+    (re.compile(r"GATEWAY_COMIND_CHAT_ID"), "GATEWAY_SKILL_UPDATE_CHAT_ID"),
+    (re.compile(r"TELEGRAM_COMIND_CHAT_ID"), "TELEGRAM_SKILL_UPDATE_CHAT_ID"),
+    (re.compile(r"comind_skill_update", re.I), "skill_update"),
+    (re.compile(r"Comind AI Native Auth", re.I), "Gateway Platform Auth"),
+    (re.compile(r"Comind AI Native", re.I), "Gateway Platform"),
+    (re.compile(r"sales-assistant@comind\.space", re.I), "sales-assistant@example.invalid"),
+    (re.compile(r"employee@comind\.space", re.I), "employee@example.invalid"),
+    (re.compile(r"hermes-service@comind\.space", re.I), "hermes-service@example.invalid"),
+    (re.compile(r"team@comind\.space", re.I), "maintainers@example.invalid"),
+    (re.compile(r"https://github\.com/comindspace/gateway-mcp", re.I), "https://github.com/0036111-lab/gateway-installer"),
+    (re.compile(r"https://github\.com/comindspace/ai-native", re.I), "https://github.com/0036111-lab/gateway-installer"),
+    (re.compile(r"github\.com/comindspace", re.I), "github.com/0036111-lab"),
     (re.compile(r"comind\.space", re.I), "example.invalid"),
+    (re.compile(r"comindspace", re.I), "gateway-project"),
+    (re.compile(r"coMind Space", re.I), "Gateway Project"),
+    (re.compile(r"\bcomind\b", re.I), "gateway"),
 ]
-BRAND_PATTERN = re.compile(r"comind|coMind", re.I)
 
 
 def run(*args: str, cwd: pathlib.Path | None = None) -> None:
@@ -80,33 +75,24 @@ def clone_pinned(name: str, url: str, commit: str) -> pathlib.Path:
     return dst
 
 
-def is_product_facing(path: pathlib.Path, root: pathlib.Path) -> bool:
-    rel = path.relative_to(root)
-    if path.name in PROTECTED_BASENAMES:
-        return False
-    if path.name in PRODUCT_FACING_NAMES:
-        return True
-    return any(part in PRODUCT_FACING_PARTS for part in rel.parts[:-1])
-
-
-def rewrite_product_branding(root: pathlib.Path) -> None:
+def rewrite_nonlegal_branding(root: pathlib.Path) -> None:
     for path in root.rglob("*"):
-        if not path.is_file() or not is_product_facing(path, root):
+        if not path.is_file() or path.name in PROTECTED_BASENAMES:
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
 
-        # Never rewrite lines that look like legal attribution/copyright notices.
         out: list[str] = []
         changed = False
         for line in text.splitlines(keepends=True):
-            if re.search(r"copyright|licensed under|developed by", line, re.I):
+            # Preserve explicit legal attribution/copyright lines.
+            if LEGAL_LINE.search(line):
                 out.append(line)
                 continue
             new_line = line
-            for pattern, replacement in BRAND_REPLACEMENTS:
+            for pattern, replacement in REPLACEMENTS:
                 new_line = pattern.sub(replacement, new_line)
             changed = changed or (new_line != line)
             out.append(new_line)
@@ -116,7 +102,6 @@ def rewrite_product_branding(root: pathlib.Path) -> None:
 
 
 def audit_branding() -> list[str]:
-    """Return remaining non-legal occurrences for explicit review."""
     hits: list[str] = []
     for root in (VENDOR / "gateway", VENDOR / "platform"):
         for path in root.rglob("*"):
@@ -129,7 +114,7 @@ def audit_branding() -> list[str]:
             for n, line in enumerate(lines, 1):
                 if not BRAND_PATTERN.search(line):
                     continue
-                if re.search(r"copyright|licensed under|developed by", line, re.I):
+                if LEGAL_LINE.search(line):
                     continue
                 hits.append(f"{path.relative_to(ROOT)}:{n}: {line.strip()}")
     return hits
@@ -139,7 +124,7 @@ def main() -> None:
     VENDOR.mkdir(exist_ok=True)
     for name, url, commit in SOURCES:
         root = clone_pinned(name, url, commit)
-        rewrite_product_branding(root)
+        rewrite_nonlegal_branding(root)
 
     hits = audit_branding()
     if hits:
