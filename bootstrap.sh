@@ -10,7 +10,7 @@ SKIP_CADDY=0
 usage() {
   cat <<'EOF'
 Usage:
-  ./bootstrap.sh --owner-email EMAIL [--hostname HOST] [--public-ip IP] [--install-dir PATH] [--skip-caddy]
+  bash bootstrap.sh --owner-email EMAIL [--hostname HOST] [--public-ip IP] [--install-dir PATH] [--skip-caddy]
 
 Purpose:
   Turn a clean Ubuntu 24.04 VM into a running Gateway test deployment.
@@ -18,14 +18,14 @@ Purpose:
 What it automates:
   - installs Python venv support, Docker, Docker Compose, Caddy and curl
   - installs the Gateway installer CLI from this repository
-  - configures the vendored Gateway with safe local secrets
+  - configures the vendored Gateway with locally generated secrets
   - validates the generated configuration with gateway doctor
   - builds and starts PostgreSQL, Gateway and notification worker
   - provisions HTTPS with Caddy
   - verifies the public /healthz endpoint
 
 Defaults:
-  - auth is disabled for this bootstrap smoke-test flow
+  - authentication is disabled for this smoke-test bootstrap flow
   - if --hostname is omitted, the public IPv4 is detected and sslip.io is used
 EOF
 }
@@ -78,17 +78,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ${EUID} -ne 0 ]]; then
   command -v sudo >/dev/null 2>&1 || fail "run as root or install sudo"
-  exec sudo -E "$SCRIPT_DIR/bootstrap.sh" \
-    --owner-email "$OWNER_EMAIL" \
-    ${HOSTNAME_OVERRIDE:+--hostname "$HOSTNAME_OVERRIDE"} \
-    ${PUBLIC_IP:+--public-ip "$PUBLIC_IP"} \
-    --install-dir "$INSTALL_DIR" \
-    $([[ $SKIP_CADDY -eq 1 ]] && printf '%s' '--skip-caddy')
+  REEXEC_ARGS=(--owner-email "$OWNER_EMAIL" --install-dir "$INSTALL_DIR")
+  [[ -n "$HOSTNAME_OVERRIDE" ]] && REEXEC_ARGS+=(--hostname "$HOSTNAME_OVERRIDE")
+  [[ -n "$PUBLIC_IP" ]] && REEXEC_ARGS+=(--public-ip "$PUBLIC_IP")
+  [[ $SKIP_CADDY -eq 1 ]] && REEXEC_ARGS+=(--skip-caddy)
+  exec sudo -E bash "$SCRIPT_DIR/bootstrap.sh" "${REEXEC_ARGS[@]}"
 fi
 
-if [[ ! -r /etc/os-release ]]; then
-  fail "cannot identify the operating system"
-fi
+[[ -r /etc/os-release ]] || fail "cannot identify the operating system"
 # shellcheck disable=SC1091
 source /etc/os-release
 case "${ID:-}" in
@@ -99,7 +96,7 @@ esac
 export DEBIAN_FRONTEND=noninteractive
 
 echo "INFO    packages             installing Docker, Compose, Caddy and Python runtime"
-apt-get update -y
+apt-get update
 apt-get install -y ca-certificates curl python3 python3-venv docker.io docker-compose-v2 caddy
 systemctl enable --now docker >/dev/null
 
