@@ -1,0 +1,42 @@
+name: Build vendored source snapshot
+
+on:
+  push:
+    branches:
+      - import-vendorized-upstreams
+    paths:
+      - scripts/import_upstreams.py
+      - .github/workflows/vendorize-artifact.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vendorize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: import-vendorized-upstreams
+      - name: Import pinned upstream source
+        run: python3 scripts/import_upstreams.py
+      - name: Commit vendored sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vendor
+          if git diff --cached --quiet; then
+            echo "Vendored source already up to date"
+          else
+            git commit -m "Vendor pinned independent source snapshot"
+            git push origin HEAD:import-vendorized-upstreams
+          fi
+      - name: Archive vendor tree
+        run: tar -czf vendor-snapshot.tar.gz vendor
+      - name: Upload snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: vendor-snapshot
+          path: vendor-snapshot.tar.gz
+          retention-days: 1
