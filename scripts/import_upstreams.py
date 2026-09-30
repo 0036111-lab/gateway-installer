@@ -37,6 +37,7 @@ BRAND_PATTERN = re.compile(r"comind", re.I)
 
 # Specific compatibility names first, then general branding.
 REPLACEMENTS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"GATEWAY_COMIND_\*"), "GATEWAY_SKILL_*"),
     (re.compile(r"GATEWAY_COMIND_MR_REVIEW_CHAT_ID"), "GATEWAY_SKILL_REVIEW_CHAT_ID"),
     (re.compile(r"GATEWAY_COMIND_CHAT_ID"), "GATEWAY_SKILL_UPDATE_CHAT_ID"),
     (re.compile(r"TELEGRAM_COMIND_CHAT_ID"), "TELEGRAM_SKILL_UPDATE_CHAT_ID"),
